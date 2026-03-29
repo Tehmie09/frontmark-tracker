@@ -1,9 +1,9 @@
 import { useState, useMemo } from "react";
 
 const TEACHERS = [
-  "Mr. Adeyemi", "Mrs. Okonkwo", "Mr. Babatunde", "Mrs. Fashola",
-  "Mr. Eze", "Mrs. Adesanya", "Mr. Olawale", "Mrs. Chukwu",
-  "Mr. Ibrahim", "Mrs. Nwosu"
+  "Mr. Victor", "Mrs. Bukola", "Mr. Paul", "Mrs. Cynthia",
+  "Mr. Ikechukwu", "Mrs. Amazing", "Mr. Samuel", "Mrs. Joyful",
+  "Mr. Blessing", "Mr. Toyosi"
 ];
 
 const MONTHS = ["January","February","March","April","May","June",
