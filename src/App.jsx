@@ -434,4 +434,3 @@ const navBtnStyle = {
   borderRadius: 8, width: 38, height: 38, fontSize: 20, cursor: "pointer",
   display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit"
 };
-4c4c
