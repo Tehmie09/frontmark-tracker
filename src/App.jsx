@@ -8,22 +8,36 @@ const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const FINE_AMOUNT = 200;
 const ADMIN_PASSWORD = "Olufunke1";
 const API_KEY = "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";
+
 function getDaysInMonth(year, month) { return new Date(year, month + 1, 0).getDate(); }
 function getFirstDay(year, month) { return new Date(year, month, 1).getDay(); }
 function isWeekend(year, month, day) { const d = new Date(year, month, day).getDay(); return d === 0 || d === 6; }
 
 async function callClaude(prompt) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": API_KEY, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      messages: [{ role: "user", content: prompt }]
-    })
-  });
-  const data = await res.json();
-  return data.content?.[0]?.text || "Could not generate response.";
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      return "Error: " + (err.error?.message || "API call failed. Please try again.");
+    }
+    const data = await res.json();
+    return data.content?.[0]?.text || "No response generated.";
+  } catch (e) {
+    return "Connection error. Please check your internet and try again.";
+  }
 }
 
 export default function App() {
@@ -40,11 +54,12 @@ export default function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedTeachersForDate, setSelectedTeachersForDate] = useState([]);
   const [newTeacher, setNewTeacher] = useState("");
-  const [aiModal, setAiModal] = useState(null); // { type: 'report' | 'whatsapp', teacher? }
+  const [aiModal, setAiModal] = useState(null);
   const [aiResult, setAiResult] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [reportMonth, setReportMonth] = useState(today.getMonth());
   const [reportYear, setReportYear] = useState(today.getFullYear());
+  const [copied, setCopied] = useState(false);
 
   const [records, setRecords] = useState(() => {
     try { const s = localStorage.getItem("fmc_records"); return s ? JSON.parse(s) : {}; } catch { return {}; }
@@ -101,17 +116,14 @@ export default function App() {
     return s;
   }, [allRecords, teachers]);
 
-  // Get stats for a specific month
   const getMonthStats = (month, year) => {
     const monthKey = `${year}-${String(month+1).padStart(2,"0")}`;
-    const monthRecords = Object.entries(records).filter(([k]) => k.startsWith(monthKey));
     const stats = {};
-    teachers.forEach(t => stats[t] = { late: 0, paid: 0, unpaid: 0, dates: [] });
-    monthRecords.forEach(([date, list]) => {
+    teachers.forEach(t => stats[t] = { late: 0, paid: 0, unpaid: 0 });
+    Object.entries(records).filter(([k]) => k.startsWith(monthKey)).forEach(([, list]) => {
       list.forEach(r => {
-        if (!stats[r.teacher]) stats[r.teacher] = { late: 0, paid: 0, unpaid: 0, dates: [] };
+        if (!stats[r.teacher]) stats[r.teacher] = { late: 0, paid: 0, unpaid: 0 };
         stats[r.teacher].late++;
-        stats[r.teacher].dates.push(date);
         if (r.timePaid) stats[r.teacher].paid++;
         else stats[r.teacher].unpaid++;
       });
@@ -120,37 +132,33 @@ export default function App() {
   };
 
   const generateMonthlyReport = async () => {
-    setAiLoading(true);
-    setAiResult("");
+    setAiLoading(true); setAiResult("");
     const stats = getMonthStats(reportMonth, reportYear);
-    const monthName = MONTHS[reportMonth];
     const summary = teachers.map(t => {
       const s = stats[t] || { late: 0, paid: 0, unpaid: 0 };
       return `${t}: ${s.late} late arrival(s), ₦${s.paid * FINE_AMOUNT} paid, ₦${s.unpaid * FINE_AMOUNT} still owed`;
     }).join("\n");
-
-    const prompt = `You are the vice principal of Frontmark College in Lagos, Nigeria. Write a formal monthly punctuality report for ${monthName} ${reportYear} based on this staff lateness data:\n\n${summary}\n\nTotal fine per late arrival: ₦${FINE_AMOUNT}\n\nWrite a professional report with: a header, summary of findings, individual staff breakdown, total fines collected vs outstanding, and a closing recommendation. Keep it concise and formal.`;
-
+    const prompt = `You are the vice principal of Frontmark College in Lagos, Nigeria. Write a formal monthly punctuality report for ${MONTHS[reportMonth]} ${reportYear} based on this staff lateness data:\n\n${summary}\n\nFine per late arrival: ₦${FINE_AMOUNT}\n\nWrite a professional report with: a header, summary of findings, individual staff breakdown, total fines collected vs outstanding, and a closing recommendation. Keep it concise and formal.`;
     const result = await callClaude(prompt);
     setAiResult(result);
     setAiLoading(false);
   };
 
   const generateWhatsApp = async (teacher) => {
-    setAiLoading(true);
-    setAiResult("");
+    setAiLoading(true); setAiResult("");
     const s = teacherStats[teacher] || { late: 0, paid: 0, unpaid: 0 };
-    const prompt = `Write a short, professional but friendly WhatsApp message from a school administrator to a teacher named ${teacher} at Frontmark College Lagos. The message is about their punctuality fine. Details: they have been late ${s.late} time(s) this term, have paid ₦${s.paid * FINE_AMOUNT}, and still owe ₦${s.unpaid * FINE_AMOUNT} in fines (₦${FINE_AMOUNT} per late arrival). Keep it under 100 words, respectful, and end with a polite reminder to pay any outstanding fine. Start with "Dear ${teacher},"`;
-
+    const prompt = `Write a short professional WhatsApp message from a school administrator to a teacher named ${teacher} at Frontmark College Lagos about their punctuality fine. They have been late ${s.late} time(s), paid ₦${s.paid * FINE_AMOUNT}, and still owe ₦${s.unpaid * FINE_AMOUNT} (₦${FINE_AMOUNT} per late arrival). Keep it under 80 words, respectful, and end with a polite reminder to pay any outstanding fine. Start with "Dear ${teacher},"`;
     const result = await callClaude(prompt);
     setAiResult(result);
     setAiLoading(false);
   };
 
-  const openAiModal = (type, teacher = null) => {
-    setAiModal({ type, teacher });
-    setAiResult("");
-    if (type === "whatsapp" && teacher) generateWhatsApp(teacher);
+  const handleCopy = () => {
+    if (aiResult) {
+      navigator.clipboard?.writeText(aiResult).catch(() => {});
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
@@ -174,14 +182,14 @@ export default function App() {
             : <div><div style={{ fontSize:12, color:"#c9a84c" }}>Fine: ₦{FINE_AMOUNT}</div><div style={{ fontSize:10, color:"#555" }}>👁 View only</div></div>}
           </div>
         </div>
-        <div style={{ display:"flex", gap:0, marginTop:8 }}>
-          {[["calendar","📅 Calendar"],["records","📋 Records"],["teachers","👨‍🏫 Teachers"],["ai","🤖 AI Tools"]].map(([v,label]) => (
-            <button key={v} onClick={() => setView(v)} style={{ background:view===v?"#c9a84c":"transparent", color:view===v?"#0f1117":"#888", border:"none", padding:"8px 12px", cursor:"pointer", fontSize:12, fontWeight:view===v?"bold":"normal", borderRadius:"6px 6px 0 0", fontFamily:"inherit" }}>{label}</button>
+        <div style={{ display:"flex", gap:0, marginTop:8, overflowX:"auto" }}>
+          {[["calendar","📅"],["records","📋"],["teachers","👨‍🏫"],["ai","🤖 AI"]].map(([v,label]) => (
+            <button key={v} onClick={() => setView(v)} style={{ background:view===v?"#c9a84c":"transparent", color:view===v?"#0f1117":"#888", border:"none", padding:"8px 14px", cursor:"pointer", fontSize:12, fontWeight:view===v?"bold":"normal", borderRadius:"6px 6px 0 0", fontFamily:"inherit", whiteSpace:"nowrap" }}>{label}</button>
           ))}
         </div>
       </div>
 
-      {!isAdmin && <div style={{ background:"#1a1f2e", borderBottom:"1px solid #2a2f3e", padding:"8px 16px", textAlign:"center", fontSize:11, color:"#666" }}>👁 View only mode. Tap ⏰ icon 3 times to log in as admin.</div>}
+      {!isAdmin && <div style={{ background:"#1a1f2e", borderBottom:"1px solid #2a2f3e", padding:"8px 16px", textAlign:"center", fontSize:11, color:"#666" }}>👁 View only. Tap ⏰ 3 times to log in as admin.</div>}
 
       {/* CALENDAR */}
       {view === "calendar" && (
@@ -270,11 +278,7 @@ export default function App() {
                       <span style={{ fontSize:11, background:"#1a2e1a", color:"#4a9a4a", padding:"2px 8px", borderRadius:20 }}>₦{s.paid*FINE_AMOUNT} paid</span>
                       {s.unpaid>0&&<span style={{ fontSize:11, background:"#2e2a1a", color:"#c9a84c", padding:"2px 8px", borderRadius:20 }}>₦{s.unpaid*FINE_AMOUNT} owed</span>}
                     </div>
-                    {isAdmin && (
-                      <button onClick={() => openAiModal("whatsapp", t)} style={{ marginTop:8, background:"#1a2640", color:"#4a9a4a", border:"1px solid #2a4a2a", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>
-                        📱 Generate WhatsApp Message
-                      </button>
-                    )}
+                    {isAdmin && <button onClick={() => { setAiModal({type:"whatsapp",teacher:t}); setAiResult(""); generateWhatsApp(t); }} style={{ marginTop:8, background:"#1a2640", color:"#4a9a4a", border:"1px solid #2a4a2a", borderRadius:6, padding:"4px 10px", fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>📱 WhatsApp Message</button>}
                   </div>
                   {isAdmin&&<button onClick={()=>removeTeacher(t)} style={{ background:"transparent", color:"#444", border:"1px solid #2a2f3e", borderRadius:6, padding:"4px 8px", cursor:"pointer", fontSize:11, fontFamily:"inherit" }}>✕</button>}
                 </div>
@@ -287,7 +291,7 @@ export default function App() {
       {/* AI TOOLS */}
       {view === "ai" && (
         <div style={{ padding:"24px 16px" }}>
-          <div style={{ fontSize:16, color:"#c9a84c", marginBottom:6, fontWeight:"bold" }}>🤖 AI Tools</div>
+          <div style={{ fontSize:16, color:"#c9a84c", marginBottom:4, fontWeight:"bold" }}>🤖 AI Tools</div>
           <div style={{ fontSize:12, color:"#666", marginBottom:20 }}>Powered by Claude AI</div>
 
           {/* Monthly Report */}
@@ -302,23 +306,17 @@ export default function App() {
                 {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
-            <button onClick={generateMonthlyReport} disabled={aiLoading} style={{ width:"100%", background:"linear-gradient(135deg,#c9a84c,#8b6914)", color:"#0f1117", border:"none", borderRadius:8, padding:"12px", fontWeight:"bold", cursor:"pointer", fontSize:14, fontFamily:"inherit", opacity:aiLoading?0.7:1 }}>
-              {aiLoading?"Generating...":"Generate Report"}
+            <button onClick={() => { setAiModal({type:"report"}); setAiResult(""); generateMonthlyReport(); }} disabled={aiLoading} style={{ width:"100%", background:"linear-gradient(135deg,#c9a84c,#8b6914)", color:"#0f1117", border:"none", borderRadius:8, padding:"12px", fontWeight:"bold", cursor:"pointer", fontSize:14, fontFamily:"inherit" }}>
+              {aiLoading ? "Generating..." : "Generate Report"}
             </button>
-            {aiResult && aiModal?.type !== "whatsapp" && (
-              <div style={{ marginTop:12, background:"#0f1117", border:"1px solid #2a2f3e", borderRadius:8, padding:12 }}>
-                <div style={{ fontSize:12, color:"#e0d8c8", lineHeight:1.6, whiteSpace:"pre-wrap" }}>{aiResult}</div>
-                <button onClick={() => { navigator.clipboard?.writeText(aiResult); }} style={{ marginTop:8, background:"transparent", color:"#c9a84c", border:"1px solid #c9a84c", borderRadius:6, padding:"6px 12px", fontSize:11, cursor:"pointer", fontFamily:"inherit" }}>📋 Copy</button>
-              </div>
-            )}
           </div>
 
-          {/* WhatsApp per teacher */}
+          {/* WhatsApp */}
           <div style={{ background:"#1a1f2e", border:"1px solid #2a2f3e", borderRadius:12, padding:16 }}>
-            <div style={{ fontSize:14, color:"#c9a84c", fontWeight:"bold", marginBottom:4 }}>📱 WhatsApp Message Generator</div>
+            <div style={{ fontSize:14, color:"#c9a84c", fontWeight:"bold", marginBottom:4 }}>📱 WhatsApp Message</div>
             <div style={{ fontSize:12, color:"#888", marginBottom:12 }}>Generate a message for a specific teacher</div>
             {teachers.map(t => (
-              <button key={t} onClick={() => { setAiModal({type:"whatsapp",teacher:t}); generateWhatsApp(t); }} style={{ width:"100%", background:"#141820", border:"1px solid #2a2f3e", borderRadius:8, padding:"10px 14px", marginBottom:8, textAlign:"left", cursor:"pointer", fontFamily:"inherit", color:"#e0d8c8", fontSize:13, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <button key={t} onClick={() => { setAiModal({type:"whatsapp",teacher:t}); setAiResult(""); generateWhatsApp(t); }} style={{ width:"100%", background:"#141820", border:"1px solid #2a2f3e", borderRadius:8, padding:"10px 14px", marginBottom:8, textAlign:"left", cursor:"pointer", fontFamily:"inherit", color:"#e0d8c8", fontSize:13, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                 <span>{t}</span><span style={{ color:"#4a9a4a", fontSize:11 }}>Generate →</span>
               </button>
             ))}
@@ -351,16 +349,20 @@ export default function App() {
         </div>
       )}
 
-      {/* AI RESULT MODAL (WhatsApp) */}
-      {aiModal?.type === "whatsapp" && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", display:"flex", alignItems:"flex-end", zIndex:150 }} onClick={()=>setAiModal(null)}>
-          <div style={{ background:"#1a1f2e", borderRadius:"20px 20px 0 0", border:"1px solid #2a2f3e", borderBottom:"none", padding:"20px 16px 32px", width:"100%", maxHeight:"80vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
+      {/* AI RESULT MODAL */}
+      {aiModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", display:"flex", alignItems:"flex-end", zIndex:150 }} onClick={()=>{ if(!aiLoading) setAiModal(null); }}>
+          <div style={{ background:"#1a1f2e", borderRadius:"20px 20px 0 0", border:"1px solid #2a2f3e", borderBottom:"none", padding:"20px 16px 32px", width:"100%", maxHeight:"85vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
             <div style={{ textAlign:"center", marginBottom:16 }}>
-              <div style={{ fontSize:16, fontWeight:"bold", color:"#c9a84c" }}>📱 WhatsApp Message</div>
-              <div style={{ fontSize:12, color:"#666", marginTop:2 }}>For {aiModal.teacher}</div>
+              <div style={{ fontSize:16, fontWeight:"bold", color:"#c9a84c" }}>{aiModal.type==="report" ? "📊 Monthly Report" : "📱 WhatsApp Message"}</div>
+              {aiModal.teacher && <div style={{ fontSize:12, color:"#666", marginTop:2 }}>For {aiModal.teacher}</div>}
+              {aiModal.type==="report" && <div style={{ fontSize:12, color:"#666", marginTop:2 }}>{MONTHS[reportMonth]} {reportYear}</div>}
             </div>
             {aiLoading ? (
-              <div style={{ textAlign:"center", padding:40, color:"#666" }}>✨ Generating message...</div>
+              <div style={{ textAlign:"center", padding:40 }}>
+                <div style={{ fontSize:30, marginBottom:12 }}>✨</div>
+                <div style={{ color:"#888", fontSize:14 }}>Claude is generating...</div>
+              </div>
             ) : (
               <>
                 <div style={{ background:"#0f1117", border:"1px solid #2a2f3e", borderRadius:8, padding:14, marginBottom:12 }}>
@@ -368,7 +370,9 @@ export default function App() {
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
                   <button onClick={()=>setAiModal(null)} style={{ flex:1, background:"transparent", color:"#888", border:"1px solid #2a2f3e", borderRadius:10, padding:12, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>Close</button>
-                  <button onClick={() => { navigator.clipboard?.writeText(aiResult); }} style={{ flex:2, background:"linear-gradient(135deg,#25d366,#128c7e)", color:"white", border:"none", borderRadius:10, padding:12, fontSize:13, fontWeight:"bold", cursor:"pointer", fontFamily:"inherit" }}>📋 Copy to WhatsApp</button>
+                  <button onClick={handleCopy} style={{ flex:2, background: aiModal.type==="whatsapp" ? "linear-gradient(135deg,#25d366,#128c7e)" : "linear-gradient(135deg,#c9a84c,#8b6914)", color: aiModal.type==="whatsapp" ? "white" : "#0f1117", border:"none", borderRadius:10, padding:12, fontSize:13, fontWeight:"bold", cursor:"pointer", fontFamily:"inherit" }}>
+                    {copied ? "✅ Copied!" : aiModal.type==="whatsapp" ? "📋 Copy for WhatsApp" : "📋 Copy Report"}
+                  </button>
                 </div>
               </>
             )}
