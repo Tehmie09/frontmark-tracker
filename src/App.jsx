@@ -7,7 +7,7 @@ const MONTHS = ["January","February","March","April","May","June",
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const FINE_AMOUNT = 200;
 const ADMIN_PASSWORD = "Olufunke1";
-const API_KEY = "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";
+const API_KEY = "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";
 
 function getDaysInMonth(year, month) { return new Date(year, month + 1, 0).getDate(); }
 function getFirstDay(year, month) { return new Date(year, month, 1).getDay(); }
