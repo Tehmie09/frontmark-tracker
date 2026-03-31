@@ -7,7 +7,7 @@ const MONTHS = ["January","February","March","April","May","June",
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const FINE_AMOUNT = 200;
 const ADMIN_PASSWORD = "Olufunke1";
-
+const API_KEY = "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";
 function getDaysInMonth(year, month) { return new Date(year, month + 1, 0).getDate(); }
 function getFirstDay(year, month) { return new Date(year, month, 1).getDay(); }
 function isWeekend(year, month, day) { const d = new Date(year, month, day).getDay(); return d === 0 || d === 6; }
